@@ -11,7 +11,7 @@
 //
 // Local run: mkdir -p out && MAKEFUN_BOT_DIR=. MAKEFUN_OUTPUT_DIR=out node main.ts
 
-import { copyFileSync, mkdirSync } from 'node:fs';
+import { copyFileSync, mkdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 // Inside the grader these are /bot and /output; the env vars let the same
@@ -22,9 +22,23 @@ const OUTPUT_DIR = process.env.MAKEFUN_OUTPUT_DIR ?? '/output';
 mkdirSync(OUTPUT_DIR, { recursive: true });
 
 try {
+  // Validate the post pointer before handing it to the gate: the entry is
+  // the X post, so a missing or malformed POST.json must fail loudly here
+  // instead of silently shipping an unreadable file to the scorer.
+  const raw = readFileSync(join(BOT_DIR, 'POST.json'), 'utf8');
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch (err) {
+    throw new Error(`POST.json is not valid JSON: ${(err as Error).message}`);
+  }
+  const url = (parsed as { url?: unknown } | null)?.url;
+  if (typeof url !== 'string' || url.trim() === '') {
+    throw new Error('POST.json must contain a non-empty string "url" field naming the X post');
+  }
   copyFileSync(join(BOT_DIR, 'POST.json'), join(OUTPUT_DIR, 'POST.json'));
-  console.log('POST.json copied to the output directory.');
+  console.log(`POST.json copied to the output directory. Post: ${url.trim()}`);
 } catch (err) {
-  console.error(`Could not copy POST.json from ${BOT_DIR}: ${(err as Error).message}`);
+  console.error(`Invalid or missing POST.json in ${BOT_DIR}: ${(err as Error).message}`);
   process.exit(1);
 }
